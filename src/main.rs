@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
-use keepass::db::{Group, Node};
 use keepass::{Database, DatabaseKey};
+use keepass_finder::analyze_keepass_db;
 use rpassword::prompt_password;
-use std::cell::RefCell;
 use std::fs::OpenOptions;
 use std::path::Path;
 
@@ -10,6 +9,7 @@ use pwn_db::PwnDb;
 
 use crate::pwn_db::convert_pwndb;
 
+mod keepass_finder;
 mod pwn_db;
 
 #[derive(Parser)]
@@ -72,47 +72,7 @@ fn keepass(
     let db = Database::open(&mut dbfile, key).unwrap();
     let pwndbfile = OpenOptions::new().read(true).open(&pwndb_path).unwrap();
     let mut pwndb = PwnDb::new(pwndbfile).unwrap();
-
-    struct StackItem<'a> {
-        name: &'a str,
-        iter: std::slice::Iter<'a, Node>,
-    }
-
-    impl<'a> StackItem<'a> {
-        fn new(group: &'a Group) -> StackItem<'a> {
-            StackItem {
-                name: &group.name,
-                iter: group.children.iter(),
-            }
-        }
-    }
-
-    let mut stack: Vec<RefCell<StackItem>> =
-        vec![RefCell::new(StackItem::new(&db.root))];
-    while let Some(item) = stack.last() {
-        let child = item.try_borrow_mut().unwrap().iter.next();
-        match child {
-            None => {
-                stack.pop();
-            }
-            Some(Node::Group(g)) => {
-                stack.push(RefCell::new(StackItem::new(g)));
-            }
-            Some(Node::Entry(e)) => {
-                let mut name = String::new();
-                for item in &stack {
-                    name += item.try_borrow().unwrap().name;
-                    name += " -> ";
-                }
-                name += e.get_title().unwrap_or("<unnamed>");
-
-                let pwn_count = pwndb.search(&password).unwrap();
-                if pwn_count != 0 {
-                    println!("{name}: pwned {pwn_count} times");
-                }
-            }
-        }
-    }
+    analyze_keepass_db(&db.root, &mut pwndb);
 }
 
 fn main() {
