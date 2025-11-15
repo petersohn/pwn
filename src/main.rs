@@ -72,7 +72,12 @@ fn keepass(
     let db = Database::open(&mut dbfile, key).unwrap();
     let pwndbfile = OpenOptions::new().read(true).open(&pwndb_path).unwrap();
     let mut pwndb = PwnDb::new(pwndbfile).unwrap();
-    analyze_keepass_db(&db.root, &mut pwndb);
+    let result = analyze_keepass_db(&db.root, &mut pwndb);
+
+    for (names, pwn_count) in result {
+        let name = names.join(" -> ");
+        println!("{name}: pwned {pwn_count} times");
+    }
 }
 
 fn main() {
