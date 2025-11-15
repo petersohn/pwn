@@ -2,13 +2,13 @@ use clap::{Parser, Subcommand};
 use keepass::db::{Group, Node};
 use keepass::{Database, DatabaseKey};
 use rpassword::prompt_password;
-use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 use pwn_db::PwnDb;
+
+use crate::pwn_db::convert_pwndb;
 
 mod pwn_db;
 
@@ -39,8 +39,6 @@ enum Command {
 
 fn convert(input: String, output: String) {
     let infile = OpenOptions::new().read(true).open(&input).unwrap();
-    let len = infile.metadata().unwrap().len() as f64;
-
     let mut outfile = OpenOptions::new()
         .write(true)
         .create(true)
@@ -48,21 +46,7 @@ fn convert(input: String, output: String) {
         .open(&output)
         .unwrap();
 
-    let mut hash: [u8; 20] = [0; 20];
-    let mut amount: f64 = 0.0;
-    let mut percentage: u8 = 0;
-    for line in BufReader::new(infile).lines().map(|l| l.unwrap()) {
-        hex::decode_to_slice(&line[0..40], &mut hash).unwrap();
-        let count = line[41..].parse::<u32>().unwrap();
-        outfile.write(&hash).unwrap();
-        outfile.write(&count.to_be_bytes()).unwrap();
-        amount += line.len() as f64;
-        let new_percentage = ((amount / len) * 100.0) as u8;
-        if new_percentage != percentage {
-            percentage = new_percentage;
-            println!("{percentage}%");
-        }
-    }
+    convert_pwndb(&infile, &mut outfile).unwrap();
 }
 
 fn keepass(
@@ -122,9 +106,7 @@ fn keepass(
                 }
                 name += e.get_title().unwrap_or("<unnamed>");
 
-                let hash = Sha1::digest(password.as_bytes());
-                let pwn_count =
-                    pwndb.search(hash.as_slice().try_into().unwrap()).unwrap();
+                let pwn_count = pwndb.search(&password).unwrap();
                 if pwn_count != 0 {
                     println!("{name}: pwned {pwn_count} times");
                 }
